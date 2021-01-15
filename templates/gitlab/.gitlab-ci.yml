@@ -1,0 +1,65 @@
+#========================
+# Define pipeline stages
+#========================
+stages:
+  - preparation
+  - test
+  - build
+
+#========================
+# Define global defaults
+#========================
+default:
+  image: node:12-alpine
+  # cache using branch name
+  # https://gitlab.com/help/ci/caching/index.md
+  cache:
+    key:
+      prefix: ${CI_COMMIT_REF_SLUG}
+      files:
+        - package.json
+        - package-lock.json
+    paths:
+      - node_modules/
+      - ~/.npm
+
+#========================
+# Define global variables
+#========================
+variables:
+  GIT_DEPTH: 1
+
+#========================
+# Define jobs
+#========================
+get:dependencies:
+  stage: preparation
+  before_script:
+    - apk add --update --no-cache git build-base
+  script:
+    - npm ci
+
+check:coding-style:
+  stage: test
+  script:
+    - npm run lint
+
+check:audit:
+  stage: test
+  script:
+    - npm audit
+
+test:
+  stage: test
+  script:
+    - npm test
+
+build:
+  stage: build
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 days
+    when: on_success

@@ -1,0 +1,81 @@
+version: '3.5'
+
+networks:
+  proxy-net:
+    name: proxy-network
+
+volumes:
+  letsencrypt: {}
+
+services:
+  proxy:
+    image: traefik:v2.3
+    command:
+      - --entrypoints.http.address=:80
+      - --entrypoints.https.address=:443
+      - --accesslog=true
+      - --log.level=INFO
+      # Config certificates resolver. Uncomment below line for debug
+      #- --certificatesresolvers.mycert.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+      - --certificatesresolvers.mycert.acme.tlschallenge=true
+      - --certificatesresolvers.mycert.acme.email=admin@${DOMAIN:-example.com}
+      - --certificatesresolvers.mycert.acme.storage=/letsencrypt/acme.json
+      - --certificatesResolvers.mycert.acme.keyType=RSA4096
+      # Enable api and dashboard
+      - --api.dashboard=true
+      - --api.debug=false
+      # Enable ping
+      - --ping=true
+      - --ping.manualrouting=true
+      # Enable metrics
+      - --metrics.prometheus=true
+      - --metrics.prometheus.addEntryPointsLabels=true
+      - --metrics.prometheus.addServicesLabels=true
+      - --metrics.prometheus.manualrouting=true
+      # Enable docker provider
+      - --providers.docker=true
+      - --providers.docker.network=proxy-network
+      - --providers.docker.exposedbydefault=false
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.secured.chain.middlewares=known-ips,auth-users
+      - traefik.http.middlewares.https-only.redirectscheme.scheme=https
+      # TODO: change your IPs
+      - traefik.http.middlewares.known-ips.ipwhitelist.sourceRange=192.168.0.1/24,172.16.0.1/16
+      - traefik.http.middlewares.auth-users.basicauth.realm=Admin
+      # TODO: change your username & secret. Default: test/test
+      - traefik.http.middlewares.auth-users.basicauth.users=test:$$apr1$$bLaRU9Rq$$n/9/kkrM54oF0Lsai7hYn0
+      # Redirect all HTTP traffic to HTTPS
+      - traefik.http.routers.any-http.entrypoints=http
+      - traefik.http.routers.any-http.rule=HostRegexp(`{any:.*}`)
+      - traefik.http.routers.any-http.middlewares=https-only
+      # Handle api and dashboard requests
+      - traefik.http.routers.proxy.entrypoints=https
+      - traefik.http.routers.proxy.rule=Host(`proxy.${DOMAIN:-example.com}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))
+      - traefik.http.routers.proxy.middlewares=secured
+      - traefik.http.routers.proxy.service=api@internal
+      - traefik.http.routers.proxy.tls.certresolver=mycert
+      - traefik.http.routers.proxy.tls.domains[0].main=proxy.${DOMAIN:-example.com}
+      # Handle ping requests
+      - traefik.http.routers.ping.entrypoints=https
+      - traefik.http.routers.ping.rule=Host(`proxy.${DOMAIN:-example.com}`) && PathPrefix(`/ping`)
+      - traefik.http.routers.ping.middlewares=secured
+      - traefik.http.routers.ping.service=ping@internal
+      - traefik.http.routers.ping.tls.certresolver=mycert
+      - traefik.http.routers.ping.tls.domains[0].main=proxy.${DOMAIN:-example.com}
+      # Handle metrics requests
+      - traefik.http.routers.metrics.entrypoints=https
+      - traefik.http.routers.metrics.rule=Host(`proxy.${DOMAIN:-example.com}`) && PathPrefix(`/metrics`)
+      - traefik.http.routers.metrics.middlewares=secured
+      - traefik.http.routers.metrics.service=prometheus@internal
+      - traefik.http.routers.metrics.tls.certresolver=mycert
+      - traefik.http.routers.metrics.tls.domains[0].main=proxy.${DOMAIN:-example.com}
+    networks:
+      - proxy-net
+    ports:
+      - 80:80
+      - 443:443
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro

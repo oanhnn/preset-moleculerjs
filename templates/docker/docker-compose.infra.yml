@@ -1,0 +1,135 @@
+version: '3.5'
+
+networks:
+  mysql-net:
+    name: mysql-network
+  redis-net:
+    name: redis-network
+  mongo-net:
+    name: mongo-network
+  nats-net:
+    name: nats-network
+
+volumes:
+  mysql-vol: {}
+  redis-vol: {}
+  mongo-vol: {}
+  minio-vol: {}
+
+services:
+  # NATS
+  nats:
+    image: nats:2
+    networks:
+      - nats-net
+    ports:
+      - 4222:4222
+      - 6222:6222
+      - 8222:8222
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    image: redis:alpine
+    command:
+      - redis-server
+      - --appendonly yes
+      - --requirepass $$REDIS_PASSWORD
+      - --bind 0.0.0.0
+      - --port 6379
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+    networks:
+      - redis-net
+    ports:
+      - 6379:6379
+    restart: unless-stopped
+    volumes:
+      - redis-vol:/data
+    healthcheck:
+      test: REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli -h redis -p 6379 ping
+      start_period: 1s
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  # MySQL
+  mysql:
+    image: mysql:8.0
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --bind-address=0.0.0.0
+      - --port=3306
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_USER: ${DB_USERNAME:-dev}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-devpass}
+      MYSQL_DATABASE: ${DB_DATABASE:-example}
+    networks:
+      - mysql-net
+    ports:
+      - 3306:3306
+    restart: unless-stopped
+    volumes:
+      - mysql-vol:/var/lib/mysql
+      # - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: MYSQL_PWD=$$MYSQL_PASSWORD mysqladmin -h mysql -P 3306 -u $$MYSQL_USER --silent ping
+      start_period: 2s
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  # S3 service
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:-abc123}
+      MINIO_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:-abc123secret}
+    networks:
+      - proxy-net
+    restart: unless-stopped
+    volumes:
+      - minio-vol:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.minio.entrypoints=https
+      - traefik.http.routers.minio.rule=Host(`s3.${DOMAIN:-example.com}`)
+      - traefik.http.routers.minio.tls.certresolver=mycert
+      - traefik.http.routers.minio.tls.domains[0].main=s3.${DOMAIN:-example.com}
+
+  # Adminer
+  dbadmin:
+    image: adminer
+    depends_on:
+      - mysql
+    environment:
+      - ADMINER_DESIGN=flat
+    networks:
+      - mysql-net
+      - proxy-net
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dbadmin.entrypoints=https
+      - traefik.http.routers.dbadmin.rule=Host(`dba.${DOMAIN:-example.com}`)
+      - traefik.http.routers.dbadmin.middlewares=secured
+      - traefik.http.routers.dbadmin.tls.certresolver=mycert
+      - traefik.http.routers.dbadmin.tls.domains[0].main=dba.${DOMAIN:-example.com}
+
+  #mongo
+  mongo:
+    image: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
+    networks:
+      - mongo-net
+    ports:
+      - 27017:27017
+    restart: unless-stopped
+    volumes:
+      - mongo-vol:/data/db

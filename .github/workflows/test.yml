@@ -1,0 +1,80 @@
+name: Test preset
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Get npm cache directory path
+      id: npm-cache-dir-path
+      run: echo "::set-output name=dir::$(npm config get cache)"
+
+    - name: Cache dependencies
+      id: npm-cache
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.npm-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run lint
+      run: npm run lint
+
+    - name: Run tests
+      run: npm test
+
+  generate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        options:
+          - '--eslint'
+        node:
+          - 12.x
+          - 14.x
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setting up NodeJS
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node }}
+
+    - name: Get npm cache directory path
+      id: npm-cache-dir-path
+      run: echo "::set-output name=dir::$(npm config get cache)"
+
+    - name: Cache dependencies
+      id: npm-cache
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.npm-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install moleculer-cli
+      run: npm i -g moleculer-cli
+
+    - name: Create project with Typescript template
+      run: moleculer init --answers=test/answers.json --install project-typescript ci-test
+
+    - name: Apply preset
+      run: npx use-preset .. ${{ matrix.options }} --debug --no-interaction
+      working-directory: ./ci-test
+
+    - name: Run tests in the generated project
+      run: |
+        npm run lint
+        npm test
+      working-directory: ./ci-test
