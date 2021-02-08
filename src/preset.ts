@@ -7,13 +7,47 @@ Preset.setName('oanhnn/moleculerjs')
   .option('github', false)
   .option('typescript', false)
 
-Preset.hook(() => {})
+// Preset.hook(() => {})
 
-Preset.extract('default')
-  .withDots(true)
-  .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
-  .withTitle('Copy default files')
+// Default
+Preset.group((preset) => {
+  preset
+    .extract('default')
+    .withDots(true)
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
 
+  preset
+    .editNodePackages()
+    .addDev('jest', '^26.6')
+    .addDev('jest-cli', '^26.6')
+    .merge({
+      engines: {
+        node: '>= 14.14',
+      },
+    })
+}).withTitle('Execute default tasks')
+
+// ESLint
+Preset.group((preset) => {
+  preset
+    .extract('eslint')
+    .withDots(true)
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+
+  preset.editNodePackages().delete(['eslint-plugin-prefer-arrow'])
+
+  preset
+    .editNodePackages()
+    .addDev('eslint', '^7.17')
+    .addDev('eslint-config-prettier', '^7.2')
+    .addDev('eslint-plugin-import', '^2.22')
+    .addDev('eslint-plugin-prettier', '^3.3')
+    .addDev('prettier', '^2.2')
+})
+  .withTitle('Execute ESLint tasks')
+  .ifOption('eslint')
+
+// Typescript
 Preset.group((preset) => {
   preset
     .editNodePackages()
@@ -26,44 +60,60 @@ Preset.group((preset) => {
 
   preset
     .editNodePackages()
-    .addDev('typescript', '^4.0')
-    .addDev('@types/jest', '^25.1')
+    .addDev('typescript', '^4.1')
+    .addDev('@types/jest', '^26.0')
     .addDev('@types/mkdirp', '^1.0')
     .addDev('@types/node', '^14.14')
-
-  preset.editNodePackages().merge({
-    engines: {
-      node: '>= 12.x.x',
-    },
-  })
+    .addDev('ts-jest', '^26.5')
+    .addDev('ts-node', '^9.1')
 
   preset
-    .extract('typescript')
+    .extract('typescript/tsconfig.json')
+    .to('tsconfig.json')
     .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+
+  preset
+    .extract('typescript/.eslintrc.js')
+    .to('.eslintrc.js')
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+    .ifOption('eslint')
+
+  preset
+    .editNodePackages()
+    .addDev('eslint-import-resolver-typescript', '^2.3')
+    .ifOption('eslint')
 })
-  .withTitle('Install Typescript')
-  .ifOptionEquals('typescript', true)
+  .withTitle('Execute Typescript task')
+  .ifOption('typescript')
 
 // Docker
-Preset.extract('docker')
-  .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
-  .withTitle('Copy Docker config files')
-  .ifOptionEquals('docker', true)
+Preset.group((preset) => {
+  preset
+    .extract('docker')
+    .withDots(true)
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+})
+  .withTitle('Execute Docker task')
+  .ifOption('docker')
 
 // GitHub
-Preset.extract('github')
-  .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
-  .withTitle('Copy Github config files')
-  .ifOptionEquals('github', true)
+Preset.group((preset) => {
+  preset
+    .extract('github')
+    .withDots(true)
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+})
+  .withTitle('Execute Github tasks')
+  .ifOption('github')
 
 // Gitlab
-Preset.extract('gitlab')
-  .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
-  .withTitle('Copy Gitlab config files')
-  .ifOptionEquals('gitlab', true)
-
-// Clean up
-Preset.delete(['phpunit.xml', '.styleci.yml']).withTitle('Clean up')
+Preset.group((preset) => {
+  preset
+    .extract('gitlab')
+    .whenConflict(Preset.isInteractive() ? 'ask' : 'override')
+})
+  .withTitle('Execute Gitlab tasks')
+  .ifOption('gitlab')
 
 // Install NodeJS dependencies
 Preset.installDependencies('node')
