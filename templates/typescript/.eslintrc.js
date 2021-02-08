@@ -19,7 +19,7 @@ module.exports = {
     ecmaVersion: 2018,
     sourceType: 'module',
   },
-  plugins: ['@typescript-eslint', 'import', 'prefer-arrow', 'prettier'],
+  plugins: ['@typescript-eslint', 'import', 'prettier'],
   rules: {
     '@typescript-eslint/ban-ts-ignore': 'off',
     'import/order': 'error',
@@ -36,4 +36,9 @@ module.exports = {
       env: { jest: true },
     },
   ],
+  settings: {
+    'import/resolver': {
+      typescript: {}, // this loads <rootdir>/tsconfig.json to eslint
+    },
+  },
 }
