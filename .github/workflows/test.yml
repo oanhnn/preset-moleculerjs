@@ -38,8 +38,12 @@ jobs:
       matrix:
         options:
           - '--eslint'
+          - '--docker'
+          - '--github'
+          - '--gitlab'
+          - '--typescript'
+          - '--eslint --typescript'
         node:
-          - 12.x
           - 14.x
     steps:
     - name: Checkout
@@ -63,14 +67,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-
 
-    - name: Install moleculer-cli
-      run: npm i -g moleculer-cli
+    - name: Install moleculer-cli and apply
+      run: npm i -g moleculer-cli apply
 
     - name: Create project with Typescript template
       run: moleculer init --answers=test/answers.json --install project-typescript ci-test
 
     - name: Apply preset
-      run: npx use-preset .. ${{ matrix.options }} --debug --no-interaction
+      run: apply .. ${{ matrix.options }} --debug --no-interaction
       working-directory: ./ci-test
 
     - name: Run tests in the generated project

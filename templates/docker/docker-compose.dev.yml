@@ -30,15 +30,8 @@ services:
 
   # Redis
   redis:
-    image: redis:alpine
-    command:
-      - redis-server
-      - --appendonly yes
-      - --requirepass $$REDIS_PASSWORD
-      - --bind 0.0.0.0
-      - --port 6379
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+    image: redis:5-alpine
+    command: redis-server --appendonly yes --bind 0.0.0.0
     networks:
       - redis-net
     ports:
@@ -47,26 +40,21 @@ services:
     volumes:
       - redis-vol:/data
     healthcheck:
-      test: REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli -h redis -p 6379 ping
-      start_period: 1s
-      interval: 1s
+      test: PING=$$(redis-cli -h `hostname -i` -p 6379 ping) && [ "$$PING" == "PONG" ]
+      start_period: 15s
+      interval: 3s
       timeout: 3s
       retries: 10
 
   # MySQL
   mysql:
     image: mysql:8.0
-    command:
-      - mysqld
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --bind-address=0.0.0.0
-      - --port=3306
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --bind-address=0.0.0.0
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
-      MYSQL_USER: ${DB_USERNAME:-dev}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-devpass}
-      MYSQL_DATABASE: ${DB_DATABASE:-example}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-rootpass}
+      - MYSQL_USER=${MYSQL_USER:-dbmaster}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-exampledb}
     networks:
       - mysql-net
     ports:
@@ -74,32 +62,45 @@ services:
     restart: unless-stopped
     volumes:
       - mysql-vol:/var/lib/mysql
-      # - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: MYSQL_PWD=$$MYSQL_PASSWORD mysqladmin -h mysql -P 3306 -u $$MYSQL_USER --silent ping
-      start_period: 2s
-      interval: 1s
-      timeout: 3s
+      test: MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin -h `hostname -i` -P 3306 -u root --silent ping
+      start_period: 20s
+      interval: 5s
+      timeout: 5s
       retries: 10
 
   # S3 service
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     command: server /data
+    labels:
+      # Enable Traefik for this service
+      - traefik.enable=true
+      # Routing
+      - traefik.http.routers.minio.entrypoints=websecure
+      - traefik.http.routers.minio.rule=Host(`s3.${DOMAIN:?Variable not set}`)
+      - traefik.http.routers.minio.service=minio-svc
+      - traefik.http.routers.minio.tls=true
+      - traefik.http.routers.minio.tls.certresolver=le
+      - traefik.http.routers.minio.priority=10
+      - traefik.http.services.minio-svc.loadbalancer.server.port=9000
     environment:
-      MINIO_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:-abc123}
-      MINIO_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:-abc123secret}
+      - MINIO_ACCESS_KEY=${AWS_ACCESS_KEY_ID:?Variable not set}
+      - MINIO_SECRET_KEY=${AWS_SECRET_ACCESS_KEY:?Variable not set}
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
     networks:
       - proxy-net
+    ports:
+      - 9000:9000
     restart: unless-stopped
     volumes:
       - minio-vol:/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.minio.entrypoints=https
-      - traefik.http.routers.minio.rule=Host(`s3.${DOMAIN:-example.com}`)
-      - traefik.http.routers.minio.tls.certresolver=mycert
-      - traefik.http.routers.minio.tls.domains[0].main=s3.${DOMAIN:-example.com}
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      start_period: 20s
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Adminer
   dbadmin:
